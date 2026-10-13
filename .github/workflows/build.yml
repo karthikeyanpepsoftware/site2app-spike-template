@@ -1,0 +1,71 @@
+name: build
+
+on:
+  workflow_dispatch:
+
+env:
+  STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+  KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+  KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.4'
+
+      - name: Decode keystore
+        run: |
+          printf '%s' "$KEYSTORE_B64" | base64 -d > /tmp/keystore.p12
+          ls -l /tmp/keystore.p12
+        env:
+          KEYSTORE_B64: ${{ secrets.KEYSTORE_BASE64 }}
+
+      - name: Accept SDK licenses / ensure platform
+        run: |
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager "platforms;android-34" "build-tools;34.0.0" > /dev/null || true
+
+      - name: Build release APK and AAB
+        run: gradle assembleRelease bundleRelease --no-daemon
+
+      - name: Verify APK signature
+        run: |
+          BUILD_TOOLS=$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)
+          echo "Using build-tools $BUILD_TOOLS"
+          "$ANDROID_HOME/build-tools/$BUILD_TOOLS/apksigner" verify --print-certs app/build/outputs/apk/release/app-release.apk | tee apk-certs.txt
+
+      - name: Compute build-info.json
+        run: |
+          VERSION_CODE=$(grep '^versionCode=' gradle.properties | cut -d= -f2)
+          CONFIG_HASH=$(sha256sum app/src/main/assets/config.json | cut -d' ' -f1)
+          FINGERPRINT=$(grep 'SHA-256 digest' apk-certs.txt | head -1 | awk '{print $NF}')
+          cat > build-info.json <<EOF
+          {
+            "versionCode": $VERSION_CODE,
+            "templateVersion": "0.1.0",
+            "configHash": "$CONFIG_HASH",
+            "fingerprint": "$FINGERPRINT"
+          }
+          EOF
+          cat build-info.json
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: spike-artifacts
+          path: |
+            app/build/outputs/apk/release/app-release.apk
+            app/build/outputs/bundle/release/app-release.aab
+            build-info.json
