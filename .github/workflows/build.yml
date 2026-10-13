@@ -66,11 +66,16 @@ jobs:
           EOF
           cat build-info.json
 
+      - name: Stage artifacts
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/release/app-release.apk dist/
+          cp app/build/outputs/bundle/release/app-release.aab dist/
+          cp build-info.json dist/
+          ls -l dist
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: spike-artifacts
-          path: |
-            app/build/outputs/apk/release/app-release.apk
-            app/build/outputs/bundle/release/app-release.aab
-            build-info.json
+          path: dist/
