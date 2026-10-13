@@ -1,12 +1,12 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+}
+
 def appProps = rootProject.file("gradle.properties").with { f ->
     def p = new Properties()
     f.withInputStream { p.load(it) }
     p
-}
-
-plugins {
-    id 'com.android.application'
-    id 'org.jetbrains.kotlin.android'
 }
 
 android {
